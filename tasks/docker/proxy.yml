@@ -1,0 +1,138 @@
+#
+# The replicated control does not pay take into account differences between http and https proxies
+# so use a more generic name for the setting value
+#
+- name: Set the replicated_proxy_address for http
+  set_fact:
+    replicated_proxy_address: "{{ replicated_http_proxy_address }}"
+  when: replicated_http_proxy_address is defined
+
+- name: Set the replicated_proxy_address for https
+  set_fact:
+    replicated_proxy_address: "{{ replicated_https_proxy_address }}"
+  when: replicated_https_proxy_address is defined
+
+#
+# Systemd proxy controls
+#
+
+- name: Set the systemd http proxy file
+  set_fact:
+    docker_systemd_proxy_file: "/etc/systemd/system/docker.service.d/http-proxy.conf"
+    docker_systemd_proxy_label: "HTTP"
+  when:
+  - ansible_service_mgr == "systemd"
+  - replicated_http_proxy_address is defined
+    
+- name: Set the systemd https proxy file
+  set_fact:
+    docker_systemd_proxy_file: "/etc/systemd/system/docker.service.d/https-proxy.conf"
+    docker_systemd_proxy_label: "HTTPS"
+  when:
+  - ansible_service_mgr == "systemd"
+  - replicated_https_proxy_address is defined
+
+- name: Append no_proxy defaults
+  set_fact:
+    replicated_no_proxy: "{{ replicated_no_proxy }} + [ 'localhost', '127.0.0.1' ]"
+
+- name: Append local no_proxy ipv4
+  set_fact:
+    replicated_no_proxy: "{{ replicated_no_proxy }} + [ '{{ ansible_default_ipv4.address }}' ]"
+
+- name: Set no_proxy
+  set_fact: 
+    docker_no_proxy: "{% for host in replicated_no_proxy -%}{{ host }}{% if not loop.last %},{% endif %}{%- endfor %}"
+
+- name: Create the systemd proxy folder if needed
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+  when:
+  - ansible_service_mgr == "systemd"
+  - replicated_proxy_address is defined
+  become: yes
+  become_method: sudo
+
+- name: Create systemd docker proxy control
+  blockinfile:
+    create: yes
+    dest: "{{ docker_systemd_proxy_file }}"
+    insertafter: EOF
+    state: present
+    block: |
+      [Service]
+      Environment="{{ docker_systemd_proxy_label }}={{ replicated_proxy_address }}" "NO_PROXY={{ docker_no_proxy }}"
+  when:
+  - ansible_service_mgr == "systemd"
+  - replicated_proxy_address is defined
+  become: yes
+  become_method: sudo
+
+- name: SystemD Reload for Docker proxy
+  command: systemctl daemon-reload
+  when:
+  - ansible_service_mgr == "systemd"
+  - replicated_proxy_address is defined
+  become: yes
+  become_method: sudo
+
+#
+# Upstart and SysV proxy controls
+#
+
+
+- name: Check if /etc/sysconfig/docker exists
+  stat: path=/etc/sysconfig/docker
+  register: docker_sysconfig_exists
+
+- name: Set proxy path
+  set_fact:
+    docker_config_file: /etc/sysconfig/docker
+  when: docker_sysconfig_exists.stat.exists
+
+- name: Check if /etc/default/docker exists
+  stat: path=/etc/default/docker
+  register: docker_upstart_exists
+
+- name: Set proxy path
+  set_fact:
+    docker_config_file: /etc/default/docker
+  when: docker_upstart_exists.stat.exists
+
+- name: Set the upstart http proxy declaration
+  set_fact:
+    docker_proxy_label: "http_proxy"
+  when:
+  - docker_config_file is defined
+  - replicated_http_proxy_address is defined
+    
+- name: Set the update https proxy declaration
+  set_fact:
+    docker_proxy_label: "https_proxy"
+  when:
+  - docker_config_file is defined
+  - replicated_https_proxy_address is defined
+
+- name: Add docker defaults file
+  blockinfile:
+    dest: "{{ docker_config_file }}"
+    insertafter: EOF
+    state: present
+    block: |
+      export {{ docker_proxy_label }}="{{ replicated_proxy_address }}"
+      export no_proxy="{{ docker_no_proxy }}"
+  when: docker_config_file is defined
+  become: yes
+  become_method: sudo
+
+- name: Restart docker
+  service:
+    name: docker
+    state: restarted
+  when: replicated_proxy_address is defined
+  become: yes
+  become_method: sudo

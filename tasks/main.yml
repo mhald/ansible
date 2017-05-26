@@ -60,7 +60,9 @@
 ### Parameters are:
 ###   - replicated_private_address
 ###   - replicated_public_address
-###   - replicated_proxy
+###   - replicated_http_proxy_address
+###   - replicated_https_proxy_address
+###   - replicated_noproxy
 ###   - replicated_docker_version
 ###   - replicated_install replicated|operator; replicated is the default
 ###
@@ -97,4 +99,3 @@
 - name: Installing Replicated-Operator
   include: scheduler/replicated/operator.yml
   when: replicated_install is not defined or replicated_install == "operator" or replicated_install == "replicated"
-

@@ -2,7 +2,6 @@
 ### Stop the Replicated and Replicated-UI containers so we can install or upgrade them
 ###
 
-## TODO: add proxy support
 ## TODO: add ipv6 support
 ## TODO: add airgap support
 
@@ -191,13 +190,23 @@
 
 - name: Set the HTTP_PROXY flag
   set_fact:
-    http_proxy_envvar: '-e HTTP_PROXY="{{ HTTP_PROXY }}"'
-  when: HTTP_PROXY is defined
+    http_proxy_envvar: '-e HTTP_PROXY="{{ replicated_proxy_address }}"'
+  when: replicated_proxy_address is defined
 
 - name: Default to no HTTP_PROXY
   set_fact:
     http_proxy_envvar: ''
-  when: HTTP_PROXY is not defined
+  when: replicated_proxy_address is not defined
+
+- name: Set the HTTP_NO_PROXY flag
+  set_fact:
+    http_no_proxy_envvar: '-e NO_PROXY="{{ docker_no_proxy }}"'
+  when: replicated_proxy_address is defined
+
+- name: Default to no HTTP_NO_PROXY
+  set_fact:
+    http_no_proxy_envvar: ''
+  when: replicated_proxy_address is not defined
 
 - name: Set facts for replicated init file
   set_fact:

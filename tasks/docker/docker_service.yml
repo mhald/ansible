@@ -5,9 +5,25 @@
 
 - include: pip.yml
 
+- name: Use http_proxy override
+  set_fact: replicated_http_proxy_address="{{ http_proxy }}"
+  when: http_proxy is defined
+
+- name: Build proxy curl argument for http
+  set_fact: curl_proxy_opt="-x \"{{ replicated_http_proxy_address }}\""
+  when: replicated_http_proxy_address is defined
+
+- name: Build proxy curl argument for https
+  set_fact: curl_proxy_opt="-x \"{{ replicated_https_proxy_address }}\""
+  when: replicated_https_proxy_address is defined
+
+- name: Skip using proxy
+  set_fact: curl_proxy_opt=""
+  when: curl_proxy_opt is not defined
+
 - name: Download docker install script
   command: >
-    curl -o /tmp/docker_install.sh https://get.docker.com
+    curl {{ curl_proxy_opt }} -o /tmp/docker_install.sh https://get.docker.com
 
 - file:
     path: /tmp/docker_install.sh
@@ -72,3 +88,5 @@
     state: started
     enabled: yes
   become: yes
+
+- include: proxy.yml
